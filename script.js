@@ -2,7 +2,7 @@ const prizes = [
     "CTRLZ Medal",
     "NoteBook CTRLZ",
     "Stickers Laptop",
-    "Good Luck",
+    "1111111111111111",
     "5 Posters Free",
     "30% off Design",
     "50% off Design",
