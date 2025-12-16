@@ -79,16 +79,7 @@ function createWheelSVG() {
         const midRad = (midAngle * Math.PI) / 180;
 
         // Radius: Start 50px from center to clear hub
-        // We actually want the Center of the text to be somewhere reasonable.
-        // Let's use text-anchor start and a fixed radius offset.
-        // Actually, previous logic used middle.
-
-        // Let's verify 'True Centering'.
-        // User wants midpoint of string aligned with center.
-        // `text-anchor="middle"` does this horizontally.
-        // `dominant-baseline="middle"` does this vertically.
-        // Position: (Center + Radius/2 + HubClearance)? 
-        // Available space: 50px (hub) to 200px (rim). Midpoint: 125px.
+        // Midpoint: 125px.
         const textRadius = 125;
 
         const tx = center + textRadius * Math.cos(midRad);
@@ -251,6 +242,229 @@ function captureResult() {
     });
 }
 
+// --- Meteor & Starry Background System ---
+const canvas = document.getElementById('bg-canvas');
+const ctx = canvas.getContext('2d');
+
+let starsArray = [];
+let meteorsArray = [];
+let logosArray = [];
+
+// Assets
+const logoImg = new Image();
+logoImg.src = 'logo.jpg';
+
+// Sizing
+function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', () => {
+    resizeCanvas();
+    initBackground();
+});
+resizeCanvas();
+
+// --- Classes ---
+
+// 1. Star (Static/Breathing Dots)
+class Star {
+    constructor() {
+        this.init();
+    }
+
+    init() {
+        this.x = Math.random() * canvas.width;
+        this.y = Math.random() * canvas.height;
+        this.size = Math.random() * 1.5; // Tiny dots
+        this.opacityBase = Math.random() * 0.5 + 0.1;
+        this.opacity = this.opacityBase;
+        this.twinkleSpeed = Math.random() * 0.02 + 0.005;
+        this.angle = Math.random() * Math.PI * 2;
+    }
+
+    update() {
+        // Twinkle effect
+        this.angle += this.twinkleSpeed;
+        this.opacity = this.opacityBase + Math.sin(this.angle) * 0.1;
+        if (this.opacity < 0) this.opacity = 0;
+    }
+
+    draw() {
+        ctx.fillStyle = `rgba(255, 255, 255, ${this.opacity})`;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
+
+// 2. Meteor (Shooting Lines)
+class Meteor {
+    constructor() {
+        this.reset();
+    }
+
+    reset() {
+        this.x = Math.random() * canvas.width;
+        this.y = Math.random() * canvas.height * 0.5; // Start mostly top half
+        this.len = Math.random() * 80 + 10;
+        this.speed = Math.random() * 10 + 5;
+        this.size = Math.random() * 1 + 0.1;
+        // Angle: mostly downwards diagonal
+        this.angle = Math.PI / 4 + (Math.random() * 0.2 - 0.1);
+        this.dirX = Math.cos(this.angle);
+        this.dirY = Math.sin(this.angle);
+
+        // Start off-screen or fade in? 
+        this.life = 0;
+        this.maxLife = Math.random() * 100 + 50;
+        this.opacity = 0;
+    }
+
+    update() {
+        this.x += this.dirX * this.speed;
+        this.y += this.dirY * this.speed;
+        this.life++;
+
+        // Fade in/out
+        if (this.life < 10) this.opacity += 0.1;
+        else if (this.life > this.maxLife - 10) this.opacity -= 0.1;
+
+        if (this.opacity < 0 || this.x > canvas.width || this.y > canvas.height) {
+            this.reset();
+            // Random respawn delay hack: move way off screen
+            this.x = Math.random() * canvas.width;
+            this.y = -100;
+            this.life = 0;
+            this.opacity = 0;
+        }
+    }
+
+    draw() {
+        // Trail gradient
+        const gradient = ctx.createLinearGradient(
+            this.x, this.y,
+            this.x - this.dirX * this.len,
+            this.y - this.dirY * this.len
+        );
+        gradient.addColorStop(0, `rgba(255, 255, 255, ${this.opacity})`);
+        gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+
+        ctx.strokeStyle = gradient;
+        ctx.lineWidth = this.size;
+        ctx.beginPath();
+        ctx.moveTo(this.x, this.y);
+        ctx.lineTo(this.x - this.dirX * this.len, this.y - this.dirY * this.len);
+        ctx.stroke();
+    }
+}
+
+// 3. Floating Logo (Existing but tuned)
+class LogoParticle {
+    constructor() {
+        this.init();
+    }
+
+    init() {
+        this.x = Math.random() * canvas.width;
+        this.y = Math.random() * canvas.height;
+        this.size = (Math.random() * 10) + 10; // Slightly larger for visibility
+        this.speedX = (Math.random() * 0.4) - 0.2;
+        this.speedY = (Math.random() * 0.4) - 0.2;
+        this.opacity = (Math.random() * 0.3) + 0.1;
+        this.rotation = Math.random() * 360;
+        this.rotationSpeed = (Math.random() * 0.2) - 0.1;
+    }
+
+    update() {
+        this.x += this.speedX;
+        this.y += this.speedY;
+        this.rotation += this.rotationSpeed;
+
+        if (this.x < -this.size * 2) this.x = canvas.width + this.size;
+        else if (this.x > canvas.width + this.size) this.x = -this.size;
+
+        if (this.y < -this.size * 2) this.y = canvas.height + this.size;
+        else if (this.y > canvas.height + this.size) this.y = -this.size;
+    }
+
+    draw() {
+        if (!logoImg.complete) return;
+
+        ctx.save();
+        ctx.globalAlpha = this.opacity;
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.rotation * Math.PI / 180);
+
+        ctx.beginPath();
+        ctx.arc(0, 0, this.size, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.clip();
+
+        ctx.drawImage(logoImg, -this.size, -this.size, this.size * 2, this.size * 2);
+        ctx.restore();
+    }
+}
+
+// Initialization
+function initBackground() {
+    starsArray = [];
+    meteorsArray = [];
+    logosArray = [];
+
+    const area = canvas.width * canvas.height;
+
+    // Stars Density
+    const numStars = Math.floor(area / 3000);
+    for (let i = 0; i < numStars; i++) starsArray.push(new Star());
+
+    // Meteors Count (Keep low for "rare" effect)
+    const numMeteors = 6;
+    for (let i = 0; i < numMeteors; i++) meteorsArray.push(new Meteor());
+
+    // Logos Count
+    const numLogos = window.innerWidth < 768 ? 4 : 8;
+    for (let i = 0; i < numLogos; i++) logosArray.push(new LogoParticle());
+}
+
+// Animation Loop
+function animateBackground() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Draw Stars
+    starsArray.forEach(star => { star.update(); star.draw(); });
+
+    // Draw Meteors
+    meteorsArray.forEach(meteor => { meteor.update(); meteor.draw(); });
+
+    // Draw Logos
+    logosArray.forEach(logo => { logo.update(); logo.draw(); });
+
+    requestAnimationFrame(animateBackground);
+}
+
+// Start
+initBackground();
+animateBackground();
+
+// Scroll Animations
+const observerOptions = {
+    threshold: 0.1,
+    rootMargin: "0px 0px -50px 0px"
+};
+
+const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+        if (entry.isIntersecting) {
+            entry.target.classList.add('visible');
+            observer.unobserve(entry.target); // Only animate once
+        }
+    });
+}, observerOptions);
+
+document.querySelectorAll('.animate-on-scroll').forEach(el => observer.observe(el));
+
+// Start
 spinBtn.addEventListener('click', spin);
 downloadBtn.addEventListener('click', captureResult);
 createWheelSVG();
